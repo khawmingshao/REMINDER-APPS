@@ -312,14 +312,24 @@ async function notifyReminder(reminder) {
 }
 
 async function requestNotifications() {
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+
+  if (isIos && !isStandalone) {
+    alert("On iPhone, open this site in Safari, tap Share, choose Add to Home Screen, then open the new app icon and enable notifications there.");
+    return;
+  }
+
   if (!("Notification" in window)) {
-    alert("This browser does not support notifications.");
+    alert("This browser cannot enable notifications. On iPhone, use Safari and Add to Home Screen first. For a stronger alert, use the Calendar button.");
     return;
   }
 
   const permission = await Notification.requestPermission();
   if (permission === "granted") {
     alert("Notifications enabled. Keep the app installed/opened often for best reliability.");
+  } else if (permission === "denied") {
+    alert("Notifications are blocked. Open iPhone Settings, find this app or Safari website settings, and allow notifications.");
   }
 }
 
