@@ -117,6 +117,11 @@ async function handleAuth(event) {
 function signIn(username) {
   state.currentUser = username;
   localStorage.setItem(SESSION_KEY, username);
+  try {
+    sessionStorage.setItem(SESSION_KEY, username);
+  } catch {
+    // Persistent localStorage is the source of truth; sessionStorage is only a fallback.
+  }
   els.password.value = "";
   renderApp();
 }
@@ -124,8 +129,32 @@ function signIn(username) {
 function logout() {
   state.currentUser = null;
   localStorage.removeItem(SESSION_KEY);
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Ignore storage fallback cleanup failures.
+  }
   clearDueTimers();
   renderApp();
+}
+
+function restoreSavedUser() {
+  const store = loadStore();
+  const savedUser = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+  const userExists = store.users.some((user) => user.username === savedUser);
+
+  if (savedUser && userExists) {
+    state.currentUser = savedUser;
+    localStorage.setItem(SESSION_KEY, savedUser);
+    return true;
+  }
+
+  if (!savedUser || !userExists) {
+    state.currentUser = null;
+    localStorage.removeItem(SESSION_KEY);
+  }
+
+  return false;
 }
 
 function getUserReminders() {
@@ -571,7 +600,19 @@ function bindEvents() {
   els.sortMode.addEventListener("change", renderReminders);
   els.reminderType.addEventListener("change", toggleReminderType);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) checkDueReminders();
+    if (!document.hidden) {
+      restoreSavedUser();
+      renderApp();
+      checkDueReminders();
+    }
+  });
+  window.addEventListener("focus", () => {
+    restoreSavedUser();
+    renderApp();
+  });
+  window.addEventListener("pageshow", () => {
+    restoreSavedUser();
+    renderApp();
   });
 }
 
@@ -589,7 +630,7 @@ function init() {
   bindEvents();
   setMode("login");
   toggleReminderType();
-  state.currentUser = localStorage.getItem(SESSION_KEY);
+  restoreSavedUser();
   registerServiceWorker();
   renderApp();
   window.setInterval(checkDueReminders, 60_000);
