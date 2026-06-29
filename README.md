@@ -22,7 +22,7 @@ Browsers cannot directly create or control iPhone Clock alarms. This app support
 - Snooze for 10 minutes from the reminder card.
 - Calendar export for each reminder, which can create a monthly iPhone Calendar alert.
 
-For the strongest alert, use the `Calendar` button on a reminder and import the `.ics` file into iPhone Calendar. Website notifications may not fire if iPhone has stopped the web app in the background.
+For the strongest alert, use the `Calendar` button on a reminder and import the `.ics` file into iPhone Calendar. Website notifications may not fire if iPhone has stopped the web app in the background. Login is remembered in the same browser until the user taps logout or clears website data.
 
 ## Run locally
 

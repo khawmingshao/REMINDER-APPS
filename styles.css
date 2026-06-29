@@ -173,6 +173,11 @@ select:focus {
   color: #174d48;
 }
 
+.ghost-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
 .danger-action {
   background: #fee2e2;
   color: #991b1b;

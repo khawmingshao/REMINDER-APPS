@@ -116,14 +116,14 @@ async function handleAuth(event) {
 
 function signIn(username) {
   state.currentUser = username;
-  sessionStorage.setItem(SESSION_KEY, username);
+  localStorage.setItem(SESSION_KEY, username);
   els.password.value = "";
   renderApp();
 }
 
 function logout() {
   state.currentUser = null;
-  sessionStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_KEY);
   clearDueTimers();
   renderApp();
 }
@@ -352,11 +352,15 @@ function renderReminders() {
     node.querySelector(".next-due").textContent = getReminderStatus(reminder, nextDue, isPastOneTime, isDue);
     node.classList.toggle("is-done", isPastOneTime);
     node.classList.toggle("is-due", isDue);
+    const snoozeButton = node.querySelector(".snooze-btn");
+    const isSnoozed = reminder.snoozedUntil && new Date(reminder.snoozedUntil) > new Date();
+    snoozeButton.textContent = isSnoozed ? "Snoozed" : "Snooze 10m";
+    snoozeButton.disabled = isSnoozed;
     node.querySelector(".edit-btn").addEventListener("click", () => editReminder(reminder.id));
     node.querySelector(".delete-btn").addEventListener("click", () => {
       if (confirm(`Delete "${reminder.title}"?`)) deleteReminder(reminder.id);
     });
-    node.querySelector(".snooze-btn").addEventListener("click", () => snoozeReminder(reminder.id, 10));
+    snoozeButton.addEventListener("click", () => snoozeReminder(reminder.id, 10));
     node.querySelector(".export-btn").addEventListener("click", () => exportCalendar(reminder));
     els.reminderList.appendChild(node);
   });
@@ -421,7 +425,7 @@ function snoozeReminder(id, minutes) {
     snoozedUntil,
     lastNotifiedKey: currentOccurrence?.key || reminder.lastNotifiedKey,
   });
-  alert(`Snoozed until ${formatDate(new Date(snoozedUntil))}. Keep the app open or reopen it around that time for website notification.`);
+  alert(`Snoozed until ${formatDate(new Date(snoozedUntil))}. The card will show Snoozed until then.`);
   renderReminders();
 }
 
@@ -585,7 +589,7 @@ function init() {
   bindEvents();
   setMode("login");
   toggleReminderType();
-  state.currentUser = sessionStorage.getItem(SESSION_KEY);
+  state.currentUser = localStorage.getItem(SESSION_KEY);
   registerServiceWorker();
   renderApp();
   window.setInterval(checkDueReminders, 60_000);
