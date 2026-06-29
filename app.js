@@ -269,6 +269,8 @@ function getCurrentOccurrence(reminder, fromDate = new Date()) {
     if (snoozedDate <= fromDate) {
       return { dueAt: snoozedDate, key: `snooze:${reminder.snoozedUntil}` };
     }
+
+    return null;
   }
 
   if (type === "once") {
@@ -410,8 +412,16 @@ function getScheduleDescription(reminder) {
 }
 
 function snoozeReminder(id, minutes) {
+  const reminder = getUserReminders().find((item) => item.id === id);
+  if (!reminder) return;
+
+  const currentOccurrence = getCurrentOccurrence({ ...reminder, snoozedUntil: null });
   const snoozedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
-  updateReminder(id, { snoozedUntil, lastNotifiedKey: `manual-snooze:${snoozedUntil}` });
+  updateReminder(id, {
+    snoozedUntil,
+    lastNotifiedKey: currentOccurrence?.key || reminder.lastNotifiedKey,
+  });
+  alert(`Snoozed until ${formatDate(new Date(snoozedUntil))}. Keep the app open or reopen it around that time for website notification.`);
   renderReminders();
 }
 
@@ -423,11 +433,18 @@ function triggerReminder(id) {
   if (reminder.lastNotifiedKey === occurrence.key) return;
 
   const updatedReminder = updateReminder(id, {
-    lastNotifiedKey: occurrence.key,
+    lastNotifiedKey: getFinalNotifiedKey(reminder, occurrence),
     snoozedUntil: null,
   });
 
   notifyReminder(updatedReminder || reminder);
+}
+
+function getFinalNotifiedKey(reminder, occurrence) {
+  if (!occurrence.key.startsWith("snooze:")) return occurrence.key;
+
+  const baseOccurrence = getCurrentOccurrence({ ...reminder, snoozedUntil: null });
+  return baseOccurrence?.key || occurrence.key;
 }
 
 async function notifyReminder(reminder) {
