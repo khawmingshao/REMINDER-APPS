@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>Reminder Apps</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="auth-panel" id="authPanel">
+        <div class="brand-mark" aria-hidden="true">R</div>
+        <h1>Reminder Apps</h1>
+        <p class="lede">Set your own monthly reminders for bills, renewals, chores, and anything you do not want to miss.</p>
+
+        <form class="auth-card" id="authForm">
+          <div class="segmented" role="tablist" aria-label="Account action">
+            <button type="button" class="segment active" id="loginTab">Log in</button>
+            <button type="button" class="segment" id="signupTab">Create user</button>
+          </div>
+
+          <label>
+            Username
+            <input id="username" name="username" autocomplete="username" required maxlength="24" />
+          </label>
+
+          <label>
+            Password
+            <input id="password" name="password" type="password" autocomplete="current-password" required minlength="4" />
+          </label>
+
+          <button class="primary-action" type="submit" id="authSubmit">Log in</button>
+          <p class="form-message" id="authMessage" role="status"></p>
+        </form>
+      </section>
+
+      <section class="dashboard hidden" id="dashboard">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Reminder app</p>
+            <h1 id="welcomeTitle">Hi</h1>
+          </div>
+          <div class="topbar-actions">
+            <button type="button" class="ghost-action" id="enableNotifications">Enable notifications</button>
+            <button type="button" class="icon-action" id="logoutButton" aria-label="Log out" title="Log out">⇥</button>
+          </div>
+        </header>
+
+        <section class="notice">
+          <strong>iPhone note:</strong> browser reminders work best when the app is installed and opened often. For a stronger native alert, export a reminder to Calendar.
+        </section>
+
+        <section class="workspace">
+          <form class="editor" id="reminderForm">
+            <h2>Add reminder</h2>
+            <input type="hidden" id="editingId" />
+
+            <label>
+              What to remind
+              <input id="reminderTitle" required maxlength="80" placeholder="Pay loan, renew road tax, submit claim..." />
+            </label>
+
+            <div class="field-grid">
+              <label>
+                Every month on
+                <input id="reminderDay" type="number" min="1" max="31" placeholder="1-31" required />
+              </label>
+
+              <label>
+                Time
+                <input id="reminderTime" type="time" value="15:00" required />
+              </label>
+            </div>
+
+            <label>
+              Notes
+              <textarea id="reminderNotes" rows="3" maxlength="240" placeholder="Optional details"></textarea>
+            </label>
+
+            <div class="form-row">
+              <button class="primary-action" type="submit" id="saveReminder">Save reminder</button>
+              <button class="ghost-action" type="button" id="cancelEdit">Cancel</button>
+            </div>
+          </form>
+
+          <section class="reminders-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Your reminders</h2>
+                <p id="reminderCount">No reminders yet</p>
+              </div>
+              <select id="sortMode" aria-label="Sort reminders">
+                <option value="next">Next due</option>
+                <option value="date">Fixed date</option>
+                <option value="title">Name</option>
+              </select>
+            </div>
+
+            <div class="empty-state" id="emptyState">
+              <h3>No reminders yet</h3>
+              <p>Add your own monthly date and time, then it will appear here.</p>
+            </div>
+
+            <div class="reminder-list" id="reminderList"></div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <template id="reminderTemplate">
+      <article class="reminder-item">
+        <div class="date-pill">
+          <span class="month-day"></span>
+          <span class="time-label"></span>
+        </div>
+        <div class="reminder-main">
+          <h3></h3>
+          <p class="notes"></p>
+          <p class="next-due"></p>
+        </div>
+        <div class="item-actions">
+          <button type="button" class="ghost-action export-btn">Calendar</button>
+          <button type="button" class="ghost-action edit-btn">Edit</button>
+          <button type="button" class="danger-action delete-btn">Delete</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
