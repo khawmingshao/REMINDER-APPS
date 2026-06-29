@@ -7,6 +7,7 @@ const state = {
   reminders: [],
   dueTimers: [],
   checkingDue: false,
+  activeAlarmId: null,
 };
 
 const els = {
@@ -39,6 +40,12 @@ const els = {
   emptyState: document.querySelector("#emptyState"),
   reminderList: document.querySelector("#reminderList"),
   template: document.querySelector("#reminderTemplate"),
+  alarmOverlay: document.querySelector("#alarmOverlay"),
+  alarmTitle: document.querySelector("#alarmTitle"),
+  alarmTime: document.querySelector("#alarmTime"),
+  alarmNotes: document.querySelector("#alarmNotes"),
+  alarmStop: document.querySelector("#alarmStop"),
+  alarmSnooze: document.querySelector("#alarmSnooze"),
 };
 
 function loadStore() {
@@ -471,6 +478,7 @@ function triggerReminder(id) {
   });
 
   notifyReminder(updatedReminder || reminder);
+  showAlarm(updatedReminder || reminder);
 }
 
 function getFinalNotifiedKey(reminder, occurrence) {
@@ -508,6 +516,32 @@ function checkDueReminders() {
   });
 
   state.checkingDue = false;
+}
+
+function showAlarm(reminder) {
+  state.activeAlarmId = reminder.id;
+  els.alarmTitle.textContent = reminder.title;
+  els.alarmTime.textContent = getScheduleDescription(reminder);
+  els.alarmNotes.textContent = reminder.notes || "Press Stop to dismiss, or Snooze 10m.";
+  els.alarmOverlay.classList.remove("hidden");
+  els.alarmStop.focus();
+}
+
+function hideAlarm() {
+  state.activeAlarmId = null;
+  els.alarmOverlay.classList.add("hidden");
+}
+
+function stopActiveAlarm() {
+  hideAlarm();
+  renderReminders();
+}
+
+function snoozeActiveAlarm() {
+  if (state.activeAlarmId) {
+    snoozeReminder(state.activeAlarmId, 10);
+  }
+  hideAlarm();
 }
 
 async function requestNotifications() {
@@ -599,6 +633,8 @@ function bindEvents() {
   els.cancelEdit.addEventListener("click", resetEditor);
   els.sortMode.addEventListener("change", renderReminders);
   els.reminderType.addEventListener("change", toggleReminderType);
+  els.alarmStop.addEventListener("click", stopActiveAlarm);
+  els.alarmSnooze.addEventListener("click", snoozeActiveAlarm);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       restoreSavedUser();

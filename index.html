@@ -120,6 +120,19 @@
           </section>
         </section>
       </section>
+
+      <section class="alarm-overlay hidden" id="alarmOverlay" role="dialog" aria-modal="true" aria-labelledby="alarmTitle">
+        <div class="alarm-panel">
+          <p class="eyebrow">Reminder due</p>
+          <h2 id="alarmTitle">Reminder</h2>
+          <p id="alarmTime">Now</p>
+          <p id="alarmNotes"></p>
+          <div class="alarm-actions">
+            <button type="button" class="primary-action" id="alarmStop">Stop</button>
+            <button type="button" class="ghost-action" id="alarmSnooze">Snooze 10m</button>
+          </div>
+        </div>
+      </section>
     </main>
 
     <template id="reminderTemplate">
