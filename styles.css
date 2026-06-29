@@ -347,6 +347,10 @@ select:focus {
   font-weight: 750;
 }
 
+.is-due .date-pill {
+  background: #b45309;
+}
+
 @media (max-width: 840px) {
   .workspace,
   .reminder-item {

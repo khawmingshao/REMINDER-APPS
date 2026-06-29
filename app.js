@@ -6,6 +6,7 @@ const state = {
   currentUser: null,
   reminders: [],
   dueTimers: [],
+  checkingDue: false,
 };
 
 const els = {
@@ -145,6 +146,16 @@ function saveUserReminder(reminder) {
   saveStore(store);
 }
 
+function updateReminder(id, updates) {
+  const store = loadStore();
+  const index = store.reminders.findIndex((item) => item.id === id && item.username === state.currentUser);
+  if (index < 0) return null;
+
+  store.reminders[index] = { ...store.reminders[index], ...updates, updatedAt: new Date().toISOString() };
+  saveStore(store);
+  return store.reminders[index];
+}
+
 function deleteReminder(id) {
   const store = loadStore();
   store.reminders = store.reminders.filter((item) => !(item.id === id && item.username === state.currentUser));
@@ -179,6 +190,8 @@ function handleReminderSave(event) {
     date: type === "once" ? date : null,
     time,
     notes: els.reminderNotes.value.trim(),
+    snoozedUntil: null,
+    lastNotifiedKey: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -247,6 +260,42 @@ function getNextDue(reminder, fromDate = new Date()) {
   return fromDate;
 }
 
+function getCurrentOccurrence(reminder, fromDate = new Date()) {
+  const [hour, minute] = reminder.time.split(":").map(Number);
+  const type = reminder.type || "monthly";
+
+  if (reminder.snoozedUntil) {
+    const snoozedDate = new Date(reminder.snoozedUntil);
+    if (snoozedDate <= fromDate) {
+      return { dueAt: snoozedDate, key: `snooze:${reminder.snoozedUntil}` };
+    }
+  }
+
+  if (type === "once") {
+    const [year, month, day] = reminder.date.split("-").map(Number);
+    const dueAt = new Date(year, month - 1, day, hour, minute, 0, 0);
+    return dueAt <= fromDate ? { dueAt, key: `once:${reminder.date}` } : null;
+  }
+
+  const year = fromDate.getFullYear();
+  const month = fromDate.getMonth();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(reminder.day, lastDay);
+  const dueAt = new Date(year, month, day, hour, minute, 0, 0);
+  const key = `monthly:${year}-${String(month + 1).padStart(2, "0")}`;
+
+  return dueAt <= fromDate ? { dueAt, key } : null;
+}
+
+function getNextAlertTime(reminder) {
+  if (reminder.snoozedUntil) {
+    const snoozedDate = new Date(reminder.snoozedUntil);
+    if (snoozedDate > new Date()) return snoozedDate;
+  }
+
+  return getNextDue(reminder);
+}
+
 function formatTime(value) {
   const [hour, minute] = value.split(":").map(Number);
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(2026, 0, 1, hour, minute));
@@ -277,6 +326,7 @@ function renderApp() {
   if (loggedIn) {
     els.welcomeTitle.textContent = `Hi, ${state.currentUser}`;
     renderReminders();
+    checkDueReminders();
   }
 }
 
@@ -289,18 +339,22 @@ function renderReminders() {
 
   reminders.forEach((reminder) => {
     const node = els.template.content.firstElementChild.cloneNode(true);
-    const nextDue = getNextDue(reminder);
+    const nextDue = getNextAlertTime(reminder);
     const isPastOneTime = (reminder.type || "monthly") === "once" && nextDue <= new Date();
+    const currentOccurrence = getCurrentOccurrence(reminder);
+    const isDue = Boolean(currentOccurrence && reminder.lastNotifiedKey !== currentOccurrence.key);
     node.querySelector(".month-day").textContent = getDatePillLabel(reminder);
     node.querySelector(".time-label").textContent = formatTime(reminder.time);
     node.querySelector("h3").textContent = reminder.title;
     node.querySelector(".notes").textContent = reminder.notes || "No extra notes";
-    node.querySelector(".next-due").textContent = isPastOneTime ? `Done: ${formatDate(nextDue)}` : `${getScheduleLabel(reminder)}: ${formatDate(nextDue)}`;
+    node.querySelector(".next-due").textContent = getReminderStatus(reminder, nextDue, isPastOneTime, isDue);
     node.classList.toggle("is-done", isPastOneTime);
+    node.classList.toggle("is-due", isDue);
     node.querySelector(".edit-btn").addEventListener("click", () => editReminder(reminder.id));
     node.querySelector(".delete-btn").addEventListener("click", () => {
       if (confirm(`Delete "${reminder.title}"?`)) deleteReminder(reminder.id);
     });
+    node.querySelector(".snooze-btn").addEventListener("click", () => snoozeReminder(reminder.id, 10));
     node.querySelector(".export-btn").addEventListener("click", () => exportCalendar(reminder));
     els.reminderList.appendChild(node);
   });
@@ -317,12 +371,12 @@ function scheduleDueChecks() {
   clearDueTimers();
 
   state.reminders.forEach((reminder) => {
-    const dueAt = getNextDue(reminder);
+    const dueAt = getNextAlertTime(reminder);
     const delay = dueAt.getTime() - Date.now();
     const maxDelay = 2_147_483_647;
 
     if (delay >= 0 && delay <= maxDelay) {
-      state.dueTimers.push(setTimeout(() => notifyReminder(reminder), delay));
+      state.dueTimers.push(setTimeout(() => triggerReminder(reminder.id), delay));
     }
   });
 }
@@ -340,12 +394,40 @@ function getScheduleLabel(reminder) {
   return (reminder.type || "monthly") === "once" ? "Date" : "Next";
 }
 
+function getReminderStatus(reminder, nextDue, isPastOneTime, isDue) {
+  if (isDue) return `Due now: ${formatDate(nextDue)}`;
+  if (reminder.snoozedUntil && new Date(reminder.snoozedUntil) > new Date()) return `Snoozed until: ${formatDate(nextDue)}`;
+  if (isPastOneTime) return `Done: ${formatDate(nextDue)}`;
+  return `${getScheduleLabel(reminder)}: ${formatDate(nextDue)}`;
+}
+
 function getScheduleDescription(reminder) {
   if ((reminder.type || "monthly") === "once") {
     return `Specific date ${reminder.date}`;
   }
 
   return `Monthly reminder for day ${reminder.day}`;
+}
+
+function snoozeReminder(id, minutes) {
+  const snoozedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+  updateReminder(id, { snoozedUntil, lastNotifiedKey: `manual-snooze:${snoozedUntil}` });
+  renderReminders();
+}
+
+function triggerReminder(id) {
+  const reminder = getUserReminders().find((item) => item.id === id);
+  if (!reminder) return;
+
+  const occurrence = getCurrentOccurrence(reminder) || { key: `timer:${new Date().toISOString()}` };
+  if (reminder.lastNotifiedKey === occurrence.key) return;
+
+  const updatedReminder = updateReminder(id, {
+    lastNotifiedKey: occurrence.key,
+    snoozedUntil: null,
+  });
+
+  notifyReminder(updatedReminder || reminder);
 }
 
 async function notifyReminder(reminder) {
@@ -362,6 +444,20 @@ async function notifyReminder(reminder) {
   }
 
   renderReminders();
+}
+
+function checkDueReminders() {
+  if (!state.currentUser || state.checkingDue) return;
+  state.checkingDue = true;
+
+  getUserReminders().forEach((reminder) => {
+    const occurrence = getCurrentOccurrence(reminder);
+    if (occurrence && reminder.lastNotifiedKey !== occurrence.key) {
+      triggerReminder(reminder.id);
+    }
+  });
+
+  state.checkingDue = false;
 }
 
 async function requestNotifications() {
@@ -453,6 +549,9 @@ function bindEvents() {
   els.cancelEdit.addEventListener("click", resetEditor);
   els.sortMode.addEventListener("change", renderReminders);
   els.reminderType.addEventListener("change", toggleReminderType);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) checkDueReminders();
+  });
 }
 
 async function registerServiceWorker() {
@@ -472,6 +571,7 @@ function init() {
   state.currentUser = sessionStorage.getItem(SESSION_KEY);
   registerServiceWorker();
   renderApp();
+  window.setInterval(checkDueReminders, 60_000);
 }
 
 init();
