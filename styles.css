@@ -300,6 +300,10 @@ select:focus {
   background: #ffffff;
 }
 
+.reminder-item.is-done {
+  opacity: 0.72;
+}
+
 .date-pill {
   min-height: 74px;
   border-radius: 8px;

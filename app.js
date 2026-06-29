@@ -23,8 +23,12 @@ const els = {
   enableNotifications: document.querySelector("#enableNotifications"),
   reminderForm: document.querySelector("#reminderForm"),
   editingId: document.querySelector("#editingId"),
+  reminderType: document.querySelector("#reminderType"),
   reminderTitle: document.querySelector("#reminderTitle"),
   reminderDay: document.querySelector("#reminderDay"),
+  reminderDate: document.querySelector("#reminderDate"),
+  monthlyDayField: document.querySelector("#monthlyDayField"),
+  specificDateField: document.querySelector("#specificDateField"),
   reminderTime: document.querySelector("#reminderTime"),
   reminderNotes: document.querySelector("#reminderNotes"),
   saveReminder: document.querySelector("#saveReminder"),
@@ -150,11 +154,18 @@ function deleteReminder(id) {
 
 function handleReminderSave(event) {
   event.preventDefault();
+  const type = els.reminderType.value;
   const day = Number(els.reminderDay.value);
+  const date = els.reminderDate.value;
   const time = els.reminderTime.value;
 
-  if (day < 1 || day > 31) {
+  if (type === "monthly" && (day < 1 || day > 31)) {
     alert("Please choose a day from 1 to 31.");
+    return;
+  }
+
+  if (type === "once" && !date) {
+    alert("Please choose the specific date.");
     return;
   }
 
@@ -162,8 +173,10 @@ function handleReminderSave(event) {
   const reminder = {
     id: els.editingId.value || crypto.randomUUID(),
     username: state.currentUser,
+    type,
     title: els.reminderTitle.value.trim(),
-    day,
+    day: type === "monthly" ? day : null,
+    date: type === "once" ? date : null,
     time,
     notes: els.reminderNotes.value.trim(),
     createdAt: now,
@@ -177,11 +190,14 @@ function handleReminderSave(event) {
 
 function resetEditor() {
   els.editingId.value = "";
+  els.reminderType.value = "monthly";
   els.reminderTitle.value = "";
   els.reminderDay.value = "";
+  els.reminderDate.value = "";
   els.reminderTime.value = "15:00";
   els.reminderNotes.value = "";
   els.saveReminder.textContent = "Save reminder";
+  toggleReminderType();
 }
 
 function editReminder(id) {
@@ -189,16 +205,26 @@ function editReminder(id) {
   if (!reminder) return;
 
   els.editingId.value = reminder.id;
+  els.reminderType.value = reminder.type || "monthly";
   els.reminderTitle.value = reminder.title;
-  els.reminderDay.value = reminder.day;
+  els.reminderDay.value = reminder.day || "";
+  els.reminderDate.value = reminder.date || "";
   els.reminderTime.value = reminder.time;
   els.reminderNotes.value = reminder.notes || "";
   els.saveReminder.textContent = "Update reminder";
+  toggleReminderType();
   els.reminderTitle.focus();
 }
 
 function getNextDue(reminder, fromDate = new Date()) {
   const [hour, minute] = reminder.time.split(":").map(Number);
+  const type = reminder.type || "monthly";
+
+  if (type === "once") {
+    const [year, month, day] = reminder.date.split("-").map(Number);
+    return new Date(year, month - 1, day, hour, minute, 0, 0);
+  }
+
   let year = fromDate.getFullYear();
   let month = fromDate.getMonth();
 
@@ -234,9 +260,13 @@ function sortReminders(reminders) {
   const mode = els.sortMode.value;
   return [...reminders].sort((a, b) => {
     if (mode === "title") return a.title.localeCompare(b.title);
-    if (mode === "date") return a.day - b.day || a.time.localeCompare(b.time);
+    if (mode === "date") return getDateSortKey(a).localeCompare(getDateSortKey(b)) || a.time.localeCompare(b.time);
     return getNextDue(a) - getNextDue(b);
   });
+}
+
+function getDateSortKey(reminder) {
+  return (reminder.type || "monthly") === "once" ? reminder.date : `monthly-${String(reminder.day).padStart(2, "0")}`;
 }
 
 function renderApp() {
@@ -260,11 +290,13 @@ function renderReminders() {
   reminders.forEach((reminder) => {
     const node = els.template.content.firstElementChild.cloneNode(true);
     const nextDue = getNextDue(reminder);
-    node.querySelector(".month-day").textContent = String(reminder.day).padStart(2, "0");
+    const isPastOneTime = (reminder.type || "monthly") === "once" && nextDue <= new Date();
+    node.querySelector(".month-day").textContent = getDatePillLabel(reminder);
     node.querySelector(".time-label").textContent = formatTime(reminder.time);
     node.querySelector("h3").textContent = reminder.title;
     node.querySelector(".notes").textContent = reminder.notes || "No extra notes";
-    node.querySelector(".next-due").textContent = `Next: ${formatDate(nextDue)}`;
+    node.querySelector(".next-due").textContent = isPastOneTime ? `Done: ${formatDate(nextDue)}` : `${getScheduleLabel(reminder)}: ${formatDate(nextDue)}`;
+    node.classList.toggle("is-done", isPastOneTime);
     node.querySelector(".edit-btn").addEventListener("click", () => editReminder(reminder.id));
     node.querySelector(".delete-btn").addEventListener("click", () => {
       if (confirm(`Delete "${reminder.title}"?`)) deleteReminder(reminder.id);
@@ -295,11 +327,32 @@ function scheduleDueChecks() {
   });
 }
 
+function getDatePillLabel(reminder) {
+  if ((reminder.type || "monthly") === "once") {
+    const [, month, day] = reminder.date.split("-").map(Number);
+    return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}`;
+  }
+
+  return String(reminder.day).padStart(2, "0");
+}
+
+function getScheduleLabel(reminder) {
+  return (reminder.type || "monthly") === "once" ? "Date" : "Next";
+}
+
+function getScheduleDescription(reminder) {
+  if ((reminder.type || "monthly") === "once") {
+    return `Specific date ${reminder.date}`;
+  }
+
+  return `Monthly reminder for day ${reminder.day}`;
+}
+
 async function notifyReminder(reminder) {
   if ("Notification" in window && Notification.permission === "granted") {
     navigator.serviceWorker?.ready.then((registration) => {
       registration.showNotification(reminder.title, {
-        body: reminder.notes || `Monthly reminder for day ${reminder.day} at ${formatTime(reminder.time)}`,
+        body: reminder.notes || `${getScheduleDescription(reminder)} at ${formatTime(reminder.time)}`,
         icon: "./icon.svg",
         badge: "./icon.svg",
       });
@@ -336,12 +389,13 @@ async function requestNotifications() {
 function exportCalendar(reminder) {
   const nextDue = getNextDue(reminder);
   const [hour, minute] = reminder.time.split(":").map(Number);
-  const start = new Date(nextDue.getFullYear(), nextDue.getMonth(), Math.min(reminder.day, 28), hour, minute, 0);
+  const isMonthly = (reminder.type || "monthly") === "monthly";
+  const start = isMonthly ? new Date(nextDue.getFullYear(), nextDue.getMonth(), Math.min(reminder.day, 28), hour, minute, 0) : nextDue;
   const end = new Date(start.getTime() + 30 * 60 * 1000);
   const stamp = toIcsDate(new Date());
   const safeTitle = escapeIcs(reminder.title);
-  const safeNotes = escapeIcs(reminder.notes || "Monthly reminder");
-  const day = Math.min(reminder.day, 28);
+  const safeNotes = escapeIcs(reminder.notes || getScheduleDescription(reminder));
+  const day = isMonthly ? Math.min(reminder.day, 28) : null;
 
   const ics = [
     "BEGIN:VCALENDAR",
@@ -352,7 +406,7 @@ function exportCalendar(reminder) {
     `DTSTAMP:${stamp}`,
     `DTSTART:${toIcsDate(start)}`,
     `DTEND:${toIcsDate(end)}`,
-    `RRULE:FREQ=MONTHLY;BYMONTHDAY=${day}`,
+    ...(isMonthly ? [`RRULE:FREQ=MONTHLY;BYMONTHDAY=${day}`] : []),
     `SUMMARY:${safeTitle}`,
     `DESCRIPTION:${safeNotes}`,
     "BEGIN:VALARM",
@@ -381,6 +435,14 @@ function escapeIcs(value) {
   return value.replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/;/g, "\\;").replace(/\n/g, "\\n");
 }
 
+function toggleReminderType() {
+  const isMonthly = els.reminderType.value === "monthly";
+  els.monthlyDayField.classList.toggle("hidden", !isMonthly);
+  els.specificDateField.classList.toggle("hidden", isMonthly);
+  els.reminderDay.required = isMonthly;
+  els.reminderDate.required = !isMonthly;
+}
+
 function bindEvents() {
   els.loginTab.addEventListener("click", () => setMode("login"));
   els.signupTab.addEventListener("click", () => setMode("signup"));
@@ -390,6 +452,7 @@ function bindEvents() {
   els.reminderForm.addEventListener("submit", handleReminderSave);
   els.cancelEdit.addEventListener("click", resetEditor);
   els.sortMode.addEventListener("change", renderReminders);
+  els.reminderType.addEventListener("change", toggleReminderType);
 }
 
 async function registerServiceWorker() {
@@ -405,6 +468,7 @@ async function registerServiceWorker() {
 function init() {
   bindEvents();
   setMode("login");
+  toggleReminderType();
   state.currentUser = sessionStorage.getItem(SESSION_KEY);
   registerServiceWorker();
   renderApp();

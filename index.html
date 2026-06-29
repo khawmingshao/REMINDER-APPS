@@ -13,7 +13,7 @@
       <section class="auth-panel" id="authPanel">
         <div class="brand-mark" aria-hidden="true">R</div>
         <h1>Reminder Apps</h1>
-        <p class="lede">Set your own monthly reminders for bills, renewals, chores, and anything you do not want to miss.</p>
+        <p class="lede">Set your own monthly or one-time reminders for bills, renewals, chores, and anything you do not want to miss.</p>
 
         <form class="auth-card" id="authForm">
           <div class="segmented" role="tablist" aria-label="Account action">
@@ -62,10 +62,23 @@
               <input id="reminderTitle" required maxlength="80" placeholder="Pay loan, renew road tax, submit claim..." />
             </label>
 
+            <label>
+              Reminder type
+              <select id="reminderType">
+                <option value="monthly">Every month</option>
+                <option value="once">Specific date</option>
+              </select>
+            </label>
+
             <div class="field-grid">
-              <label>
+              <label id="monthlyDayField">
                 Every month on
-                <input id="reminderDay" type="number" min="1" max="31" placeholder="1-31" required />
+                <input id="reminderDay" type="number" min="1" max="31" placeholder="1-31" />
+              </label>
+
+              <label id="specificDateField" class="hidden">
+                Specific date
+                <input id="reminderDate" type="date" />
               </label>
 
               <label>
@@ -93,14 +106,14 @@
               </div>
               <select id="sortMode" aria-label="Sort reminders">
                 <option value="next">Next due</option>
-                <option value="date">Fixed date</option>
+                <option value="date">Date</option>
                 <option value="title">Name</option>
               </select>
             </div>
 
             <div class="empty-state" id="emptyState">
               <h3>No reminders yet</h3>
-              <p>Add your own monthly date and time, then it will appear here.</p>
+              <p>Add either a monthly date or a specific date, then it will appear here.</p>
             </div>
 
             <div class="reminder-list" id="reminderList"></div>

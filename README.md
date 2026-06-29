@@ -2,6 +2,11 @@
 
 A small installable reminder web app for monthly fixed-date reminders.
 
+Reminder types:
+
+- Every month: repeat on the selected day of each month.
+- Specific date: remind once on the selected calendar date.
+
 ## How family users work
 
 Each family member creates a username and password on the device/browser. Reminders are stored separately per username in that browser, and each user chooses their own monthly reminder date and time.
