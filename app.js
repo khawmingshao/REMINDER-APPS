@@ -1,6 +1,7 @@
 const STORAGE_KEY = "family-reminder-v1";
 const SESSION_KEY = "family-reminder-session";
 const ALL_DAY_RENOTIFY_INTERVAL_MS = 5 * 60 * 1000;
+const APP_VERSION = "2026-06-30.3";
 
 const state = {
   mode: "login",
@@ -40,6 +41,9 @@ const els = {
   reminderCount: document.querySelector("#reminderCount"),
   emptyState: document.querySelector("#emptyState"),
   reminderList: document.querySelector("#reminderList"),
+  historyCount: document.querySelector("#historyCount"),
+  historyEmpty: document.querySelector("#historyEmpty"),
+  historyList: document.querySelector("#historyList"),
   template: document.querySelector("#reminderTemplate"),
   alarmOverlay: document.querySelector("#alarmOverlay"),
   alarmTitle: document.querySelector("#alarmTitle"),
@@ -231,6 +235,7 @@ function handleReminderSave(event) {
     lastNotifiedKey: null,
     notificationUntil: null,
     lastPersistentNotificationAt: null,
+    alertHistory: existingReminder?.alertHistory || [],
     createdAt: existingReminder?.createdAt || now,
     updatedAt: now,
   };
@@ -364,6 +369,7 @@ function renderApp() {
   if (loggedIn) {
     els.welcomeTitle.textContent = `Hi, ${state.currentUser}`;
     renderReminders();
+    renderHistory();
     checkDueReminders();
   }
 }
@@ -397,6 +403,43 @@ function renderReminders() {
   });
 
   scheduleDueChecks();
+}
+
+function renderHistory() {
+  const history = getAlertHistory();
+  els.historyList.innerHTML = "";
+  els.historyEmpty.classList.toggle("hidden", history.length > 0);
+  els.historyCount.textContent = history.length === 1 ? "1 past alert" : `${history.length} past alerts`;
+
+  history.forEach((entry) => {
+    const node = document.createElement("article");
+    node.className = "history-item";
+    node.innerHTML = `
+      <div>
+        <h3></h3>
+        <p></p>
+      </div>
+      <span></span>
+    `;
+    node.querySelector("h3").textContent = entry.title;
+    node.querySelector("p").textContent = entry.notes || entry.description;
+    node.querySelector("span").textContent = formatDate(new Date(entry.alertedAt));
+    els.historyList.appendChild(node);
+  });
+}
+
+function getAlertHistory() {
+  return getUserReminders()
+    .flatMap((reminder) =>
+      (reminder.alertHistory || []).map((entry) => ({
+        ...entry,
+        title: reminder.title,
+        notes: reminder.notes,
+        description: getScheduleDescription(reminder),
+      })),
+    )
+    .sort((a, b) => new Date(b.alertedAt) - new Date(a.alertedAt))
+    .slice(0, 30);
 }
 
 function clearDueTimers() {
@@ -461,10 +504,21 @@ function triggerReminder(id) {
     lastNotifiedKey: occurrence.key,
     notificationUntil: getEndOfToday(now).toISOString(),
     lastPersistentNotificationAt: now.toISOString(),
+    alertHistory: getUpdatedAlertHistory(reminder, occurrence, now),
   });
 
   notifyReminder(updatedReminder || reminder);
   showAlarm(updatedReminder || reminder);
+}
+
+function getUpdatedAlertHistory(reminder, occurrence, alertedAt) {
+  const history = reminder.alertHistory || [];
+  if (history.some((entry) => entry.key === occurrence.key)) return history;
+
+  return [
+    { key: occurrence.key, dueAt: occurrence.dueAt.toISOString(), alertedAt: alertedAt.toISOString() },
+    ...history,
+  ].slice(0, 30);
 }
 
 async function notifyReminder(reminder) {
@@ -485,6 +539,7 @@ async function notifyReminder(reminder) {
   }
 
   renderReminders();
+  renderHistory();
 }
 
 async function closeReminderNotification(id) {
@@ -552,8 +607,16 @@ function hideAlarm() {
 }
 
 function stopActiveAlarm() {
+  if (state.activeAlarmId) {
+    updateReminder(state.activeAlarmId, {
+      notificationUntil: null,
+      lastPersistentNotificationAt: null,
+    });
+    closeReminderNotification(state.activeAlarmId);
+  }
   hideAlarm();
   renderReminders();
+  renderHistory();
 }
 
 async function requestNotifications() {
@@ -666,7 +729,30 @@ function bindEvents() {
 async function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     try {
-      await navigator.serviceWorker.register("./sw.js");
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+
+      const registration = await navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`);
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      }
+
+      registration.addEventListener("updatefound", () => {
+        const worker = registration.installing;
+        if (!worker) return;
+
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            worker.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      });
+
+      registration.update();
     } catch {
       // The app still works without offline caching.
     }

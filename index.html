@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0f766e" />
     <title>Reminder Apps</title>
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=2026-06-30.3" />
   </head>
   <body>
     <main class="app-shell">
@@ -49,7 +49,7 @@
         </header>
 
         <section class="notice">
-          <strong>Notification note:</strong> due reminders stay as sticky all-day notifications where the browser allows it, and repeat while the app is active. If your phone stops the web app in the background, use Calendar export for stronger closed-app alerts.
+          <strong>Notification note:</strong> due reminders stay as sticky notifications where the browser allows it, and repeat while the app is active until you close them. If your phone stops the web app in the background, use Calendar export for stronger closed-app alerts.
         </section>
 
         <section class="workspace">
@@ -117,6 +117,19 @@
             </div>
 
             <div class="reminder-list" id="reminderList"></div>
+
+            <section class="history-section">
+              <div class="panel-heading compact-heading">
+                <div>
+                  <h2>Past alerts</h2>
+                  <p id="historyCount">No past alerts yet</p>
+                </div>
+              </div>
+              <div class="empty-state compact-empty" id="historyEmpty">
+                <p>Alerts that already rang will appear here.</p>
+              </div>
+              <div class="history-list" id="historyList"></div>
+            </section>
           </section>
         </section>
       </section>
@@ -128,7 +141,7 @@
           <p id="alarmTime">Now</p>
           <p id="alarmNotes"></p>
           <div class="alarm-actions">
-            <button type="button" class="primary-action" id="alarmStop">Stop</button>
+            <button type="button" class="primary-action" id="alarmStop">Close</button>
           </div>
         </div>
       </section>
@@ -153,6 +166,6 @@
       </article>
     </template>
 
-    <script src="./app.js" defer></script>
+    <script src="./app.js?v=2026-06-30.3" defer></script>
   </body>
 </html>

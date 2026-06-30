@@ -269,7 +269,7 @@ select:focus {
 
 .alarm-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
@@ -326,7 +326,8 @@ select:focus {
   color: #657572;
 }
 
-.reminder-list {
+.reminder-list,
+.history-list {
   display: grid;
   gap: 12px;
 }
@@ -393,6 +394,50 @@ select:focus {
   background: #b45309;
 }
 
+.history-section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #d9e5e2;
+}
+
+.compact-heading {
+  margin-bottom: 10px;
+}
+
+.compact-heading h2 {
+  font-size: 20px;
+}
+
+.compact-empty {
+  min-height: 86px;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #e3ece9;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fbfa;
+}
+
+.history-item h3 {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.history-item p,
+.history-item span {
+  color: #667774;
+  line-height: 1.45;
+}
+
+.history-item span {
+  flex: 0 0 auto;
+  font-weight: 750;
+}
+
 @media (max-width: 840px) {
   .workspace,
   .reminder-item {
@@ -420,6 +465,10 @@ select:focus {
 
   .date-pill {
     width: 92px;
+  }
+
+  .history-item {
+    display: grid;
   }
 }
 
