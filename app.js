@@ -46,7 +46,6 @@ const els = {
   alarmTime: document.querySelector("#alarmTime"),
   alarmNotes: document.querySelector("#alarmNotes"),
   alarmStop: document.querySelector("#alarmStop"),
-  alarmSnooze: document.querySelector("#alarmSnooze"),
 };
 
 function loadStore() {
@@ -228,7 +227,6 @@ function handleReminderSave(event) {
     date: type === "once" ? date : null,
     time,
     notes: els.reminderNotes.value.trim(),
-    snoozedUntil: null,
     lastNotifiedKey: null,
     notificationUntil: null,
     lastPersistentNotificationAt: null,
@@ -304,15 +302,6 @@ function getCurrentOccurrence(reminder, fromDate = new Date()) {
   const [hour, minute] = reminder.time.split(":").map(Number);
   const type = reminder.type || "monthly";
 
-  if (reminder.snoozedUntil) {
-    const snoozedDate = new Date(reminder.snoozedUntil);
-    if (snoozedDate <= fromDate) {
-      return { dueAt: snoozedDate, key: `snooze:${reminder.snoozedUntil}` };
-    }
-
-    return null;
-  }
-
   if (type === "once") {
     const [year, month, day] = reminder.date.split("-").map(Number);
     const dueAt = new Date(year, month - 1, day, hour, minute, 0, 0);
@@ -330,11 +319,6 @@ function getCurrentOccurrence(reminder, fromDate = new Date()) {
 }
 
 function getNextAlertTime(reminder) {
-  if (reminder.snoozedUntil) {
-    const snoozedDate = new Date(reminder.snoozedUntil);
-    if (snoozedDate > new Date()) return snoozedDate;
-  }
-
   return getNextDue(reminder);
 }
 
@@ -392,15 +376,10 @@ function renderReminders() {
     node.querySelector(".next-due").textContent = getReminderStatus(reminder, nextDue, isPastOneTime, isDue);
     node.classList.toggle("is-done", isPastOneTime);
     node.classList.toggle("is-due", isDue);
-    const snoozeButton = node.querySelector(".snooze-btn");
-    const isSnoozed = reminder.snoozedUntil && new Date(reminder.snoozedUntil) > new Date();
-    snoozeButton.textContent = isSnoozed ? "Snoozed" : "Snooze 10m";
-    snoozeButton.disabled = isSnoozed;
     node.querySelector(".edit-btn").addEventListener("click", () => editReminder(reminder.id));
     node.querySelector(".delete-btn").addEventListener("click", () => {
       if (confirm(`Delete "${reminder.title}"?`)) deleteReminder(reminder.id);
     });
-    snoozeButton.addEventListener("click", () => snoozeReminder(reminder.id, 10));
     node.querySelector(".export-btn").addEventListener("click", () => exportCalendar(reminder));
     els.reminderList.appendChild(node);
   });
@@ -443,7 +422,6 @@ function getScheduleLabel(reminder) {
 function getReminderStatus(reminder, nextDue, isPastOneTime, isDue) {
   if (isDue) return `Due now: ${formatDate(nextDue)}`;
   if (isPersistentNotificationActive(reminder)) return `Alerting today until: ${formatDate(new Date(reminder.notificationUntil))}`;
-  if (reminder.snoozedUntil && new Date(reminder.snoozedUntil) > new Date()) return `Snoozed until: ${formatDate(nextDue)}`;
   if (isPastOneTime) return `Done: ${formatDate(nextDue)}`;
   return `${getScheduleLabel(reminder)}: ${formatDate(nextDue)}`;
 }
@@ -456,22 +434,6 @@ function getScheduleDescription(reminder) {
   return `Monthly reminder for day ${reminder.day}`;
 }
 
-function snoozeReminder(id, minutes) {
-  const reminder = getUserReminders().find((item) => item.id === id);
-  if (!reminder) return;
-
-  const currentOccurrence = getCurrentOccurrence({ ...reminder, snoozedUntil: null });
-  const snoozedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
-  updateReminder(id, {
-    snoozedUntil,
-    lastNotifiedKey: currentOccurrence?.key || reminder.lastNotifiedKey,
-    notificationUntil: null,
-    lastPersistentNotificationAt: null,
-  });
-  alert(`Snoozed until ${formatDate(new Date(snoozedUntil))}. The card will show Snoozed until then.`);
-  renderReminders();
-}
-
 function triggerReminder(id) {
   const reminder = getUserReminders().find((item) => item.id === id);
   if (!reminder) return;
@@ -481,21 +443,13 @@ function triggerReminder(id) {
   const now = new Date();
 
   const updatedReminder = updateReminder(id, {
-    lastNotifiedKey: getFinalNotifiedKey(reminder, occurrence),
-    snoozedUntil: null,
+    lastNotifiedKey: occurrence.key,
     notificationUntil: getEndOfToday(now).toISOString(),
     lastPersistentNotificationAt: now.toISOString(),
   });
 
   notifyReminder(updatedReminder || reminder);
   showAlarm(updatedReminder || reminder);
-}
-
-function getFinalNotifiedKey(reminder, occurrence) {
-  if (!occurrence.key.startsWith("snooze:")) return occurrence.key;
-
-  const baseOccurrence = getCurrentOccurrence({ ...reminder, snoozedUntil: null });
-  return baseOccurrence?.key || occurrence.key;
 }
 
 async function notifyReminder(reminder) {
@@ -561,7 +515,6 @@ function isPersistentNotificationActive(reminder, now = new Date()) {
 
 function shouldRenotifyReminder(reminder, now = new Date()) {
   if (!isPersistentNotificationActive(reminder, now)) return false;
-  if (reminder.snoozedUntil && new Date(reminder.snoozedUntil) > now) return false;
 
   const lastShownAt = reminder.lastPersistentNotificationAt ? new Date(reminder.lastPersistentNotificationAt) : null;
   return !lastShownAt || now.getTime() - lastShownAt.getTime() >= ALL_DAY_RENOTIFY_INTERVAL_MS;
@@ -571,7 +524,7 @@ function showAlarm(reminder) {
   state.activeAlarmId = reminder.id;
   els.alarmTitle.textContent = reminder.title;
   els.alarmTime.textContent = getScheduleDescription(reminder);
-  els.alarmNotes.textContent = reminder.notes || "Press Stop to dismiss, or Snooze 10m.";
+  els.alarmNotes.textContent = reminder.notes || "Press Stop to dismiss.";
   els.alarmOverlay.classList.remove("hidden");
   els.alarmStop.focus();
 }
@@ -584,13 +537,6 @@ function hideAlarm() {
 function stopActiveAlarm() {
   hideAlarm();
   renderReminders();
-}
-
-function snoozeActiveAlarm() {
-  if (state.activeAlarmId) {
-    snoozeReminder(state.activeAlarmId, 10);
-  }
-  hideAlarm();
 }
 
 async function requestNotifications() {
@@ -683,7 +629,6 @@ function bindEvents() {
   els.sortMode.addEventListener("change", renderReminders);
   els.reminderType.addEventListener("change", toggleReminderType);
   els.alarmStop.addEventListener("click", stopActiveAlarm);
-  els.alarmSnooze.addEventListener("click", snoozeActiveAlarm);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       restoreSavedUser();
