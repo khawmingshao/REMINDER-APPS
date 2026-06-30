@@ -1,5 +1,6 @@
 const STORAGE_KEY = "family-reminder-v1";
 const SESSION_KEY = "family-reminder-session";
+const ALL_DAY_RENOTIFY_INTERVAL_MS = 5 * 60 * 1000;
 
 const state = {
   mode: "login",
@@ -196,6 +197,7 @@ function deleteReminder(id) {
   const store = loadStore();
   store.reminders = store.reminders.filter((item) => !(item.id === id && item.username === state.currentUser));
   saveStore(store);
+  closeReminderNotification(id);
   renderReminders();
 }
 
@@ -228,6 +230,8 @@ function handleReminderSave(event) {
     notes: els.reminderNotes.value.trim(),
     snoozedUntil: null,
     lastNotifiedKey: null,
+    notificationUntil: null,
+    lastPersistentNotificationAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -438,6 +442,7 @@ function getScheduleLabel(reminder) {
 
 function getReminderStatus(reminder, nextDue, isPastOneTime, isDue) {
   if (isDue) return `Due now: ${formatDate(nextDue)}`;
+  if (isPersistentNotificationActive(reminder)) return `Alerting today until: ${formatDate(new Date(reminder.notificationUntil))}`;
   if (reminder.snoozedUntil && new Date(reminder.snoozedUntil) > new Date()) return `Snoozed until: ${formatDate(nextDue)}`;
   if (isPastOneTime) return `Done: ${formatDate(nextDue)}`;
   return `${getScheduleLabel(reminder)}: ${formatDate(nextDue)}`;
@@ -460,6 +465,8 @@ function snoozeReminder(id, minutes) {
   updateReminder(id, {
     snoozedUntil,
     lastNotifiedKey: currentOccurrence?.key || reminder.lastNotifiedKey,
+    notificationUntil: null,
+    lastPersistentNotificationAt: null,
   });
   alert(`Snoozed until ${formatDate(new Date(snoozedUntil))}. The card will show Snoozed until then.`);
   renderReminders();
@@ -471,10 +478,13 @@ function triggerReminder(id) {
 
   const occurrence = getCurrentOccurrence(reminder) || { key: `timer:${new Date().toISOString()}` };
   if (reminder.lastNotifiedKey === occurrence.key) return;
+  const now = new Date();
 
   const updatedReminder = updateReminder(id, {
     lastNotifiedKey: getFinalNotifiedKey(reminder, occurrence),
     snoozedUntil: null,
+    notificationUntil: getEndOfToday(now).toISOString(),
+    lastPersistentNotificationAt: now.toISOString(),
   });
 
   notifyReminder(updatedReminder || reminder);
@@ -495,6 +505,10 @@ async function notifyReminder(reminder) {
         body: reminder.notes || `${getScheduleDescription(reminder)} at ${formatTime(reminder.time)}`,
         icon: "./icon.svg",
         badge: "./icon.svg",
+        tag: `reminder-${reminder.id}`,
+        renotify: true,
+        requireInteraction: true,
+        data: { reminderId: reminder.id, url: "./index.html" },
       });
     });
   } else {
@@ -502,6 +516,18 @@ async function notifyReminder(reminder) {
   }
 
   renderReminders();
+}
+
+async function closeReminderNotification(id) {
+  if (!("serviceWorker" in navigator)) return;
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const notifications = await registration.getNotifications({ tag: `reminder-${id}` });
+    notifications.forEach((notification) => notification.close());
+  } catch {
+    // Some browsers do not expose notification lookup; deleting still stops future app notifications.
+  }
 }
 
 function checkDueReminders() {
@@ -512,10 +538,33 @@ function checkDueReminders() {
     const occurrence = getCurrentOccurrence(reminder);
     if (occurrence && reminder.lastNotifiedKey !== occurrence.key) {
       triggerReminder(reminder.id);
+      return;
+    }
+
+    if (shouldRenotifyReminder(reminder)) {
+      const now = new Date();
+      const updatedReminder = updateReminder(reminder.id, { lastPersistentNotificationAt: now.toISOString() });
+      notifyReminder(updatedReminder || reminder);
     }
   });
 
   state.checkingDue = false;
+}
+
+function getEndOfToday(date = new Date()) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function isPersistentNotificationActive(reminder, now = new Date()) {
+  return Boolean(reminder.notificationUntil && new Date(reminder.notificationUntil) > now);
+}
+
+function shouldRenotifyReminder(reminder, now = new Date()) {
+  if (!isPersistentNotificationActive(reminder, now)) return false;
+  if (reminder.snoozedUntil && new Date(reminder.snoozedUntil) > now) return false;
+
+  const lastShownAt = reminder.lastPersistentNotificationAt ? new Date(reminder.lastPersistentNotificationAt) : null;
+  return !lastShownAt || now.getTime() - lastShownAt.getTime() >= ALL_DAY_RENOTIFY_INTERVAL_MS;
 }
 
 function showAlarm(reminder) {

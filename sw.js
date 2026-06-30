@@ -1,4 +1,4 @@
-const CACHE_NAME = "reminder-apps-v8";
+const CACHE_NAME = "reminder-apps-v9";
 const ASSETS = ["./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -32,5 +32,20 @@ self.addEventListener("fetch", (event) => {
       if (cached && !cached.redirected) return cached;
       return fetch(event.request);
     }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl = new URL(event.notification.data?.url || "./index.html", self.location.href).href;
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        const existingClient = clients.find((client) => client.url === targetUrl || client.url.endsWith("/index.html"));
+        if (existingClient) return existingClient.focus();
+        return self.clients.openWindow(targetUrl);
+      }),
   );
 });

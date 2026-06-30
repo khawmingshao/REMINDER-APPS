@@ -19,6 +19,7 @@ Browsers cannot directly create or control iPhone Clock alarms. This app support
 
 - In-app/browser notifications when permission is enabled.
 - Missed reminder checks when the app is opened again.
+- Sticky all-day reminder notifications where the browser supports it. Due reminders re-notify every 5 minutes while the app is active, and deleting the reminder stops future notifications.
 - Snooze for 10 minutes from the reminder card.
 - Calendar export for each reminder, which can create a monthly iPhone Calendar alert.
 
