@@ -206,6 +206,7 @@ function handleReminderSave(event) {
   const day = Number(els.reminderDay.value);
   const date = els.reminderDate.value;
   const time = els.reminderTime.value;
+  const existingReminder = els.editingId.value ? getUserReminders().find((item) => item.id === els.editingId.value) : null;
 
   if (type === "monthly" && (day < 1 || day > 31)) {
     alert("Please choose a day from 1 to 31.");
@@ -230,7 +231,7 @@ function handleReminderSave(event) {
     lastNotifiedKey: null,
     notificationUntil: null,
     lastPersistentNotificationAt: null,
-    createdAt: now,
+    createdAt: existingReminder?.createdAt || now,
     updatedAt: now,
   };
 
@@ -305,7 +306,7 @@ function getCurrentOccurrence(reminder, fromDate = new Date()) {
   if (type === "once") {
     const [year, month, day] = reminder.date.split("-").map(Number);
     const dueAt = new Date(year, month - 1, day, hour, minute, 0, 0);
-    return dueAt <= fromDate ? { dueAt, key: `once:${reminder.date}` } : null;
+    return isOccurrenceDueToday(reminder, dueAt, fromDate) ? { dueAt, key: `once:${reminder.date}` } : null;
   }
 
   const year = fromDate.getFullYear();
@@ -315,11 +316,22 @@ function getCurrentOccurrence(reminder, fromDate = new Date()) {
   const dueAt = new Date(year, month, day, hour, minute, 0, 0);
   const key = `monthly:${year}-${String(month + 1).padStart(2, "0")}`;
 
-  return dueAt <= fromDate ? { dueAt, key } : null;
+  return isOccurrenceDueToday(reminder, dueAt, fromDate) ? { dueAt, key } : null;
 }
 
 function getNextAlertTime(reminder) {
   return getNextDue(reminder);
+}
+
+function isOccurrenceDueToday(reminder, dueAt, fromDate) {
+  if (dueAt > fromDate || !isSameLocalDate(dueAt, fromDate)) return false;
+
+  const createdAt = reminder.createdAt ? new Date(reminder.createdAt) : null;
+  return !createdAt || createdAt <= dueAt;
+}
+
+function isSameLocalDate(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 function formatTime(value) {
@@ -421,7 +433,9 @@ function getScheduleLabel(reminder) {
 
 function getReminderStatus(reminder, nextDue, isPastOneTime, isDue) {
   if (isDue) return `Due now: ${formatDate(nextDue)}`;
-  if (isPersistentNotificationActive(reminder)) return `Alerting today until: ${formatDate(new Date(reminder.notificationUntil))}`;
+  if (isPersistentNotificationActive(reminder) && getCurrentOccurrence(reminder)) {
+    return `Alerting today until: ${formatDate(new Date(reminder.notificationUntil))}`;
+  }
   if (isPastOneTime) return `Done: ${formatDate(nextDue)}`;
   return `${getScheduleLabel(reminder)}: ${formatDate(nextDue)}`;
 }
@@ -438,7 +452,8 @@ function triggerReminder(id) {
   const reminder = getUserReminders().find((item) => item.id === id);
   if (!reminder) return;
 
-  const occurrence = getCurrentOccurrence(reminder) || { key: `timer:${new Date().toISOString()}` };
+  const occurrence = getCurrentOccurrence(reminder);
+  if (!occurrence) return;
   if (reminder.lastNotifiedKey === occurrence.key) return;
   const now = new Date();
 
@@ -515,6 +530,8 @@ function isPersistentNotificationActive(reminder, now = new Date()) {
 
 function shouldRenotifyReminder(reminder, now = new Date()) {
   if (!isPersistentNotificationActive(reminder, now)) return false;
+  const occurrence = getCurrentOccurrence(reminder, now);
+  if (!occurrence || reminder.lastNotifiedKey !== occurrence.key) return false;
 
   const lastShownAt = reminder.lastPersistentNotificationAt ? new Date(reminder.lastPersistentNotificationAt) : null;
   return !lastShownAt || now.getTime() - lastShownAt.getTime() >= ALL_DAY_RENOTIFY_INTERVAL_MS;
