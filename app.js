@@ -1,7 +1,7 @@
 const STORAGE_KEY = "family-reminder-v1";
 const SESSION_KEY = "family-reminder-session";
 const ALL_DAY_RENOTIFY_INTERVAL_MS = 5 * 60 * 1000;
-const APP_VERSION = "2026-06-30.3";
+const APP_VERSION = "2026-07-01.1";
 
 const state = {
   mode: "login",
@@ -522,24 +522,55 @@ function getUpdatedAlertHistory(reminder, occurrence, alertedAt) {
 }
 
 async function notifyReminder(reminder) {
-  if ("Notification" in window && Notification.permission === "granted") {
-    navigator.serviceWorker?.ready.then((registration) => {
-      registration.showNotification(reminder.title, {
-        body: reminder.notes || `${getScheduleDescription(reminder)} at ${formatTime(reminder.time)}`,
-        icon: "./icon.svg",
-        badge: "./icon.svg",
-        tag: `reminder-${reminder.id}`,
-        renotify: true,
-        requireInteraction: true,
-        data: { reminderId: reminder.id, url: "./index.html" },
-      });
-    });
-  } else {
+  const didNotify = await showSystemNotification(reminder.title, {
+    body: reminder.notes || `${getScheduleDescription(reminder)} at ${formatTime(reminder.time)}`,
+    tag: `reminder-${reminder.id}`,
+    data: { reminderId: reminder.id, url: "./index.html" },
+  });
+
+  if (!didNotify) {
     alert(`Reminder: ${reminder.title}`);
   }
 
   renderReminders();
   renderHistory();
+}
+
+async function showSystemNotification(title, options = {}) {
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return false;
+  }
+
+  const notificationOptions = {
+    icon: "./icon.svg",
+    badge: "./icon.svg",
+    renotify: true,
+    requireInteraction: true,
+    ...options,
+  };
+
+  if ("serviceWorker" in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, notificationOptions);
+      return true;
+    } catch {
+      // Fall back to the page notification API below.
+    }
+  }
+
+  try {
+    const notification = new Notification(title, notificationOptions);
+    notification.onclick = () => {
+      window.focus();
+      if (options.data?.url) {
+        window.location.href = options.data.url;
+      }
+    };
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function closeReminderNotification(id) {
@@ -635,7 +666,17 @@ async function requestNotifications() {
 
   const permission = await Notification.requestPermission();
   if (permission === "granted") {
-    alert("Notifications enabled. Keep the app installed/opened often for best reliability.");
+    const didNotify = await showSystemNotification("Notifications enabled", {
+      body: "This test notification should stay until you close it, where your browser supports sticky notifications.",
+      tag: "reminder-test",
+      data: { url: "./index.html" },
+    });
+
+    if (didNotify) {
+      alert("Notifications enabled. You should see a test notification outside the app now.");
+    } else {
+      alert("Notifications were allowed, but this browser did not show the test notification. Try opening from the installed Home Screen app or use Calendar export.");
+    }
   } else if (permission === "denied") {
     alert("Notifications are blocked. Open iPhone Settings, find this app or Safari website settings, and allow notifications.");
   }

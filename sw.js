@@ -1,5 +1,5 @@
-const CACHE_NAME = "reminder-apps-v12";
-const ASSETS = ["./index.html", "./styles.css?v=2026-06-30.3", "./app.js?v=2026-06-30.3", "./manifest.webmanifest", "./icon.svg"];
+const CACHE_NAME = "reminder-apps-v13";
+const ASSETS = ["./index.html", "./styles.css?v=2026-07-01.1", "./app.js?v=2026-07-01.1", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
