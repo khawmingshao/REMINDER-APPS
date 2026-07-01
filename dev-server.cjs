@@ -4,7 +4,7 @@ const path = require("path");
 
 const root = path.resolve(process.cwd());
 const port = Number(process.env.PORT || 5173);
-const host = "127.0.0.1";
+const host = process.env.HOST || "0.0.0.0";
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -39,5 +39,6 @@ const server = http.createServer((request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Family Reminder running at http://${host}:${port}`);
+  console.log(`Family Reminder running at http://localhost:${port}`);
+  console.log(`For phone testing, open http://YOUR_COMPUTER_WIFI_IP:${port}`);
 });

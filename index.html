@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0f766e" />
     <title>Reminder Apps</title>
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./styles.css?v=2026-07-01.1" />
+    <link rel="stylesheet" href="./styles.css?v=2026-07-01.2" />
   </head>
   <body>
     <main class="app-shell">
@@ -166,6 +166,9 @@
       </article>
     </template>
 
-    <script src="./app.js?v=2026-07-01.1" defer></script>
+    <script>
+      window.REMINDER_PUSH_API_BASE = "https://reminder-apps-push.khawms0703.workers.dev";
+    </script>
+    <script src="./app.js?v=2026-07-01.4" defer></script>
   </body>
 </html>

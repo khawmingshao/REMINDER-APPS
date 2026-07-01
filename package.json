@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "check": "node --check app.js && node --check sw.js && node --check worker/src/index.js",
+    "deploy:worker": "wrangler deploy"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

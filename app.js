@@ -1,7 +1,8 @@
 const STORAGE_KEY = "family-reminder-v1";
 const SESSION_KEY = "family-reminder-session";
 const ALL_DAY_RENOTIFY_INTERVAL_MS = 5 * 60 * 1000;
-const APP_VERSION = "2026-07-01.1";
+const APP_VERSION = "2026-07-01.4";
+const PUSH_API_BASE = window.REMINDER_PUSH_API_BASE || "";
 
 const state = {
   mode: "login",
@@ -10,6 +11,7 @@ const state = {
   dueTimers: [],
   checkingDue: false,
   activeAlarmId: null,
+  pushSetupInFlight: false,
 };
 
 const els = {
@@ -135,6 +137,7 @@ function signIn(username) {
   }
   els.password.value = "";
   renderApp();
+  ensureClosedAppPush();
 }
 
 function logout() {
@@ -184,6 +187,7 @@ function saveUserReminder(reminder) {
   }
 
   saveStore(store);
+  syncCloudflareReminders();
 }
 
 function updateReminder(id, updates) {
@@ -200,6 +204,7 @@ function deleteReminder(id) {
   const store = loadStore();
   store.reminders = store.reminders.filter((item) => !(item.id === id && item.username === state.currentUser));
   saveStore(store);
+  syncCloudflareReminders();
   closeReminderNotification(id);
   renderReminders();
 }
@@ -337,6 +342,10 @@ function isOccurrenceDueToday(reminder, dueAt, fromDate) {
 
 function isSameLocalDate(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function isOutsideApp() {
+  return document.hidden || document.visibilityState !== "visible";
 }
 
 function formatTime(value) {
@@ -492,6 +501,11 @@ function getScheduleDescription(reminder) {
 }
 
 function triggerReminder(id) {
+  if (!isOutsideApp()) {
+    renderReminders();
+    return;
+  }
+
   const reminder = getUserReminders().find((item) => item.id === id);
   if (!reminder) return;
 
@@ -587,6 +601,11 @@ async function closeReminderNotification(id) {
 
 function checkDueReminders() {
   if (!state.currentUser || state.checkingDue) return;
+  if (!isOutsideApp()) {
+    renderReminders();
+    return;
+  }
+
   state.checkingDue = true;
 
   getUserReminders().forEach((reminder) => {
@@ -666,20 +685,147 @@ async function requestNotifications() {
 
   const permission = await Notification.requestPermission();
   if (permission === "granted") {
-    const didNotify = await showSystemNotification("Notifications enabled", {
-      body: "This test notification should stay until you close it, where your browser supports sticky notifications.",
-      tag: "reminder-test",
-      data: { url: "./index.html" },
-    });
+    els.enableNotifications.disabled = true;
+    els.enableNotifications.textContent = "Checking...";
+    const pushReady = await enableCloudflarePush();
+    const testSent = pushReady ? await sendCloudflareTestPush() : false;
+    updateNotificationButton();
 
-    if (didNotify) {
-      alert("Notifications enabled. You should see a test notification outside the app now.");
+    if (pushReady && testSent) {
+      alert("Notifications enabled. A test notification was sent. Closed-app reminders can now come from Cloudflare push.");
+    } else if (pushReady) {
+      alert("Notifications are enabled, but the test push could not be sent. Open the app again and tap Enable notifications once more.");
     } else {
-      alert("Notifications were allowed, but this browser did not show the test notification. Try opening from the installed Home Screen app or use Calendar export.");
+      alert("Notifications are allowed on this device, but closed-app push is not connected yet. Check the Worker setup, then tap Enable notifications again.");
     }
   } else if (permission === "denied") {
     alert("Notifications are blocked. Open iPhone Settings, find this app or Safari website settings, and allow notifications.");
   }
+}
+
+async function enableCloudflarePush() {
+  if (!PUSH_API_BASE || !state.currentUser || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(`${PUSH_API_BASE}/api/push/public-key`);
+    if (!response.ok) return false;
+
+    const { publicKey } = await response.json();
+    if (!publicKey) return false;
+
+    const registration = await navigator.serviceWorker.ready;
+    const existingSubscription = await registration.pushManager.getSubscription();
+    const subscription =
+      existingSubscription ||
+      (await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      }));
+
+    const subscribeResponse = await fetch(`${PUSH_API_BASE}/api/push/subscribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: state.currentUser, subscription }),
+    });
+    if (!subscribeResponse.ok) return false;
+
+    await syncCloudflareReminders();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureClosedAppPush() {
+  if (state.pushSetupInFlight) return false;
+  if (!state.currentUser) return false;
+
+  try {
+    await syncCloudflareReminders();
+
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+      updateNotificationButton();
+      return false;
+    }
+
+    state.pushSetupInFlight = true;
+    const pushReady = await enableCloudflarePush();
+    updateNotificationButton();
+    return pushReady;
+  } finally {
+    state.pushSetupInFlight = false;
+  }
+}
+
+async function syncCloudflareReminders() {
+  if (!PUSH_API_BASE || !state.currentUser) return false;
+
+  try {
+    const reminders = getUserReminders().map((reminder) => ({
+      id: reminder.id,
+      username: reminder.username,
+      type: reminder.type,
+      title: reminder.title,
+      day: reminder.day,
+      date: reminder.date,
+      time: reminder.time,
+      notes: reminder.notes,
+      createdAt: reminder.createdAt,
+      updatedAt: reminder.updatedAt,
+    }));
+
+    const response = await fetch(`${PUSH_API_BASE}/api/push/reminders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: state.currentUser, reminders }),
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function sendCloudflareTestPush() {
+  if (!PUSH_API_BASE || !state.currentUser) return false;
+
+  try {
+    const response = await fetch(`${PUSH_API_BASE}/api/push/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: state.currentUser }),
+    });
+    const result = await response.json().catch(() => ({}));
+    return response.ok && Number(result.sent) > 0;
+  } catch {
+    return false;
+  }
+}
+
+function updateNotificationButton() {
+  if (!els.enableNotifications) return;
+
+  els.enableNotifications.disabled = false;
+  if (!("Notification" in window)) {
+    els.enableNotifications.textContent = "Notifications unavailable";
+    return;
+  }
+
+  if (Notification.permission === "granted") {
+    els.enableNotifications.textContent = "Test notifications";
+    return;
+  }
+
+  els.enableNotifications.textContent = "Enable notifications";
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
 function exportCalendar(reminder) {
@@ -751,19 +897,20 @@ function bindEvents() {
   els.reminderType.addEventListener("change", toggleReminderType);
   els.alarmStop.addEventListener("click", stopActiveAlarm);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-      restoreSavedUser();
-      renderApp();
-      checkDueReminders();
-    }
+    restoreSavedUser();
+    renderApp();
+    checkDueReminders();
+    ensureClosedAppPush();
   });
   window.addEventListener("focus", () => {
     restoreSavedUser();
     renderApp();
+    ensureClosedAppPush();
   });
   window.addEventListener("pageshow", () => {
     restoreSavedUser();
     renderApp();
+    ensureClosedAppPush();
   });
 }
 
@@ -806,7 +953,9 @@ function init() {
   toggleReminderType();
   restoreSavedUser();
   registerServiceWorker();
+  updateNotificationButton();
   renderApp();
+  ensureClosedAppPush();
   window.setInterval(checkDueReminders, 60_000);
 }
 

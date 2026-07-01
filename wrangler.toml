@@ -1,0 +1,11 @@
+name = "reminder-apps-push"
+main = "worker/src/index.js"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["* * * * *"]
+
+[[kv_namespaces]]
+binding = "REMINDER_KV"
+id = "c8b9f63433c4401191d002a7441940c6"
