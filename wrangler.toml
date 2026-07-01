@@ -1,4 +1,4 @@
-name = "reminder-apps-push"
+name = "reminderapps"
 main = "worker/src/index.js"
 compatibility_date = "2026-07-01"
 compatibility_flags = ["nodejs_compat"]
